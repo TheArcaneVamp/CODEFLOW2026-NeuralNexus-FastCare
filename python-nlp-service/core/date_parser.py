@@ -50,8 +50,10 @@ def _normalize_date(raw: str) -> str:
 def _find_all_dates(text: str) -> list[str]:
     """Return all date strings found in text, in order of appearance."""
     combined = rf"(?:{DATE_V3}|{DATE_V2}|{DATE_V1})"
-    return [_normalize_date(m) for m in re.findall(combined, text, re.IGNORECASE)
-            if any(m)]  # re.findall returns tuples with groups — filter empties
+    return [
+        _normalize_date(match.group(0))
+        for match in re.finditer(combined, text, re.IGNORECASE)
+    ]
 
 
 def _find_keyword_dates(text: str) -> list[str]:

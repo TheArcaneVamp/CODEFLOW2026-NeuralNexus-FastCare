@@ -1,17 +1,17 @@
 import asyncio
-import io
 import json
 import logging
 import os
+import io
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional
 
-import pdfplumber
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
+import pdfplumber
 
 from core.date_parser import extract_date
-from core.extractor import extract_text_from_page
+from core.extractor import parse_medical_page   # we now use the page‑level function directly
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -56,6 +56,32 @@ class IngestionResponse(BaseModel):
 # Core processing
 # ---------------------------------------------------------------------------
 
+def _page_dict_to_text(page_data: dict) -> str:
+    """
+    Merge a parse_medical_page dict into a single plain string.
+    Combines flowing prose text and any OCR hits from embedded images.
+    Tables are intentionally excluded — they are structured data and
+    would add noise when passed as plain text to an LLM.
+    """
+    parts = []
+
+    text = page_data.get("text")
+    if isinstance(text, str) and text.strip():
+        parts.append(text)
+    elif isinstance(text, (list, tuple)):
+        # Defensive: flatten if something upstream returned a sequence
+        joined = " ".join(str(t) for t in text if t)
+        if joined.strip():
+            parts.append(joined)
+
+    for ocr_hit in page_data.get("ocr_text", []):
+        ocr_text = ocr_hit.get("text", "")
+        if isinstance(ocr_text, str) and ocr_text.strip():
+            parts.append(f"[OCR IMAGE TEXT]\n{ocr_text}")
+
+    return "\n\n".join(parts)
+
+
 def _process_single_pdf(contents: bytes, filename: str) -> ProcessedRecord:
     """
     Process one PDF synchronously (runs in a thread pool).
@@ -70,39 +96,45 @@ def _process_single_pdf(contents: bytes, filename: str) -> ProcessedRecord:
     total_chars = 0
 
     try:
-        pdf = pdfplumber.open(io.BytesIO(contents))
-    except Exception as exc:
-        raise ValueError(f"Cannot open '{filename}': {exc}") from exc
+        # Open the PDF from memory – pdfplumber accepts a BytesIO object
+        with pdfplumber.open(io.BytesIO(contents)) as pdf:
+            for page in pdf.pages:
+                page_data = parse_medical_page(page)   # uses default OCR settings
+                page_num = page_data["meta"]["page_number"]
 
-    try:
-        for page_num, page in enumerate(pdf.pages, start=1):
-
-            page_text = extract_text_from_page(page, page_num, filename)
-
-            if not page_text.strip():
-                logger.debug("Page %d of %s: no extractable text.", page_num, filename)
-                continue
-
-            # Date: first hit per document wins
-            if doc_date is None:
-                doc_date = extract_date(page_text)
-
-            # Accumulate raw text with provenance markers, up to the char cap
-            if total_chars < MAX_TEXT_CHARS:
-                marker_open  = f"\n--- [SOURCE: {filename} | PAGE: {page_num}] ---\n"
-                marker_close = f"\n--- [END: {filename} | PAGE: {page_num}] ---\n"
-                available    = MAX_TEXT_CHARS - total_chars
-                chunk        = page_text[:available]
-                raw_text_parts.append(f"{marker_open}{chunk}{marker_close}")
-                total_chars += len(chunk)
-
-                if total_chars >= MAX_TEXT_CHARS:
+                if page_data["meta"]["errors"]:
                     logger.warning(
-                        "%s: raw_text truncated at %d chars (MAX_TEXT_CHARS reached).",
-                        filename, MAX_TEXT_CHARS,
+                        "Page %d of %s had errors: %s",
+                        page_num, filename, page_data["meta"]["errors"],
                     )
-    finally:
-        pdf.close()
+
+                page_text = _page_dict_to_text(page_data)
+
+                if not page_text.strip():
+                    logger.debug("Page %d of %s: no extractable text.", page_num, filename)
+                    continue
+
+                # Date: first hit per document wins
+                if doc_date is None:
+                    doc_date = extract_date(page_text)
+
+                # Accumulate raw text with provenance markers, up to the char cap
+                if total_chars < MAX_TEXT_CHARS:
+                    marker_open  = f"\n--- [SOURCE: {filename} | PAGE: {page_num}] ---\n"
+                    marker_close = f"\n--- [END: {filename} | PAGE: {page_num}] ---\n"
+                    available    = MAX_TEXT_CHARS - total_chars
+                    chunk        = page_text[:available]
+                    raw_text_parts.append(f"{marker_open}{chunk}{marker_close}")
+                    total_chars += len(chunk)
+
+                    if total_chars >= MAX_TEXT_CHARS:
+                        logger.warning(
+                            "%s: raw_text truncated at %d chars (MAX_TEXT_CHARS reached).",
+                            filename, MAX_TEXT_CHARS,
+                        )
+
+    except Exception as exc:
+        raise ValueError(f"Cannot process '{filename}': {exc}") from exc
 
     return ProcessedRecord(
         filename=filename,

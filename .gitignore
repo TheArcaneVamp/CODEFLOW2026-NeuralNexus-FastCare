@@ -8,6 +8,8 @@
 /python-nlp-service/local_runner.py
 /python-nlp-service/venv
 /python-nlp-service/.env
+GEMINI.md
+
 # dependencies
 /node_modules
 /.pnp

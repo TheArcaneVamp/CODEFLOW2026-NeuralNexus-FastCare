@@ -115,6 +115,8 @@ import ProcessingStatus from "../../../components/patient/ProcessingStatus.jsx";
 import { useUpload } from "../../../hooks/useUpload.js";
 import { CheckCircle, RotateCcw } from "lucide-react";
 import LoadingSpinner from "../../../components/shared/LoadingSpinner.jsx";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 
 export default function UploadPage() {
   const { data: session, status } = useSession();

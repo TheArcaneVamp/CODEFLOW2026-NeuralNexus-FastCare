@@ -1,13 +1,15 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useUser, UserProfile } from "@clerk/nextjs";
+import { useSession } from "next-auth/react";
 import DashboardLayout from "../../../components/shared/DashboardLayout.jsx";
 import LoadingSpinner from "../../../components/shared/LoadingSpinner.jsx";
 import { Save, AlertCircle, CheckCircle } from "lucide-react";
 import { BLOOD_GROUPS } from "../../../utils/constants.js";
 
 export default function ProfilePage() {
-  const { user } = useUser();
+  const { data: session, status } = useSession();
+  const user = session?.user;
+  const isLoaded = status !== "loading";
   const [patient, setPatient] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -31,8 +33,8 @@ export default function ProfilePage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            name: user.fullName || user.firstName || "Patient",
-            email: user.primaryEmailAddress?.emailAddress || "",
+            name: user?.name || "Patient",
+            email: user?.email || "",
           }),
         });
         const data = await res.json();
@@ -207,20 +209,18 @@ export default function ProfilePage() {
               </button>
             </form>
           ) : (
-            <div className="p-4 rounded-2xl bg-surface border border-border">
-              <UserProfile
-                appearance={{
-                  variables: {
-                    colorBackground: "#111111",
-                    colorInputBackground: "#1a1a1a",
-                    colorInputText: "#f0fdf4",
-                    colorText: "#f0fdf4",
-                    colorPrimary: "#16a34a",
-                    borderRadius: "0.75rem",
-                    fontFamily: "Space Grotesk, sans-serif",
-                  },
-                }}
-              />
+            <div className="p-6 rounded-2xl bg-surface border border-border">
+              <h3 className="text-xl font-semibold mb-4 text-textprimary">Account Settings</h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-textmuted mb-1">Name</label>
+                  <p className="text-textprimary bg-surface2 px-4 py-2 rounded-lg">{session?.user?.name}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-textmuted mb-1">Email</label>
+                  <p className="text-textprimary bg-surface2 px-4 py-2 rounded-lg">{session?.user?.email}</p>
+                </div>
+              </div>
             </div>
           )}
         </div>

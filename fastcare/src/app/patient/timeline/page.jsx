@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useSession } from "next-auth/react";
 import DashboardLayout from "../../../components/shared/DashboardLayout.jsx";
 import TimelineItem from "../../../components/patient/TimelineItem.jsx";
 import EmptyState from "../../../components/shared/EmptyState.jsx";
@@ -10,7 +10,9 @@ import Link from "next/link";
 import { REPORT_TYPES } from "../../../utils/constants.js";
 
 export default function TimelinePage() {
-  const { user } = useUser();
+  const { data: session, status } = useSession();
+  const user = session?.user;
+  const isLoaded = status !== "loading";
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [patientId, setPatientId] = useState(null);
@@ -24,8 +26,8 @@ export default function TimelinePage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            name: user.fullName || user.firstName || "Patient",
-            email: user.primaryEmailAddress?.emailAddress || "",
+            name: user?.name || "Patient",
+            email: user?.email || "",
           }),
         });
         const pData = await pRes.json();

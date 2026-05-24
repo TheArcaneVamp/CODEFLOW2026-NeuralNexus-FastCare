@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { Upload, Clock, CreditCard, ArrowRight, FileText } from "lucide-react";
 import DashboardLayout from "../../../components/shared/DashboardLayout.jsx"; 
@@ -9,7 +9,9 @@ import LoadingSpinner from "../../../components/shared/LoadingSpinner.jsx";
 import { formatDate } from "../../../utils/formatDate.js";
 import StatCards from "../../../components/patient/StatCards.jsx";
 export default function PatientDashboard() {
-  const { user } = useUser();
+  const { data: session, status } = useSession();
+  const user = session?.user;
+  const isLoaded = status !== "loading";
   const [patient, setPatient] = useState(null);
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -22,8 +24,8 @@ export default function PatientDashboard() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            name: user?.fullName || user?.firstName || "Patient",
-            email: user?.primaryEmailAddress?.emailAddress || "",
+            name: user?.name || "Patient",
+            email: user?.email || "",
           }),
         });
         const pData = await pRes.json();

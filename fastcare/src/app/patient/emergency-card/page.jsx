@@ -1,12 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useUser } from "@clerk/nextjs";
+import { useSession } from "next-auth/react";
 import DashboardLayout from "../../../components/shared/DashboardLayout.jsx";
 import EmergencyCard from "../../../components/patient/EmergencyCard.jsx";
 import LoadingSpinner from "../../../components/shared/LoadingSpinner.jsx";
 
 export default function EmergencyCardPage() {
-  const { user } = useUser();
+  const { data: session, status } = useSession();
+  const user = session?.user;
+  const isLoaded = status !== "loading";
   const [patient, setPatient] = useState(null);
   const [wiki, setWiki] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -19,8 +21,8 @@ export default function EmergencyCardPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            name: user.fullName || user.firstName || "Patient",
-            email: user.primaryEmailAddress?.emailAddress || "",
+            name: user?.name || "Patient",
+            email: user?.email || "",
           }),
         });
         const pData = await pRes.json();

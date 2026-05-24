@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useUser, UserButton } from "@clerk/nextjs";
+import { useSession } from "next-auth/react";
 import {
   LayoutDashboard,
   Upload,
@@ -31,8 +31,8 @@ const doctorNav = [
 
 export default function Sidebar({ isOpen, onClose }) {
   const pathname = usePathname();
-  const { user } = useUser();
-  const role = user?.publicMetadata?.role;
+  const { data: session } = useSession();
+  const role = session?.user?.isDoctor ? "doctor" : "patient";
   const navItems = role === "doctor" ? doctorNav : patientNav;
 
   return (
@@ -106,19 +106,15 @@ export default function Sidebar({ isOpen, onClose }) {
         {/* User section */}
         <div className="px-4 py-4 border-t border-border">
           <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-surface2 transition-colors">
-            <UserButton
-              appearance={{
-                elements: {
-                  avatarBox: "w-8 h-8",
-                },
-              }}
-            />
+            <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-sm">
+              {session?.user?.name?.[0]?.toUpperCase() || "U"}
+            </div>
             <div className="flex-1 min-w-0">
               <p className="text-textprimary text-sm font-medium truncate">
-                {user?.fullName || user?.firstName || "User"}
+                {session?.user?.name || "User"}
               </p>
               <p className="text-textmuted text-xs truncate">
-                {user?.primaryEmailAddress?.emailAddress}
+                {session?.user?.email}
               </p>
             </div>
           </div>

@@ -11,8 +11,8 @@ const EmergencyContactSchema = new mongoose.Schema(
 
 const PatientSchema = new mongoose.Schema(
   {
-    clerkId: {
-      type: String,
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
       required: true,
       unique: true,
       index: true,

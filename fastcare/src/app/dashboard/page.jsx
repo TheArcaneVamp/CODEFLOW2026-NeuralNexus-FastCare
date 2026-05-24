@@ -1,12 +1,14 @@
 "use client";
-import { useUser } from "@clerk/nextjs";
+import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Stethoscope, User, Heart, Loader2 } from "lucide-react";
 import LoadingSpinner from "../../components/shared/LoadingSpinner.jsx";
 
 export default function DashboardPage() {
-  const { user, isLoaded } = useUser();
+  const { data: session, status } = useSession();
+  const user = session?.user;
+  const isLoaded = status !== "loading";
   const router = useRouter();
 
   const [selecting, setSelecting] = useState(false);
@@ -15,21 +17,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!isLoaded || !user) return;
 
-    const email =
-      user.primaryEmailAddress
-        ?.emailAddress
-        ?.toLowerCase();
-
-    const doctorEmails =
-      process.env
-        .NEXT_PUBLIC_DOCTOR_EMAILS
-        ?.split(",")
-        .map(email => email.trim().toLowerCase()) || [];
-
-    const role =
-      doctorEmails.includes(email)
-        ? "doctor"
-        : "patient";
+    const role = user.isDoctor ? "doctor" : "patient";
 
     router.replace(
       `/${role}/dashboard`

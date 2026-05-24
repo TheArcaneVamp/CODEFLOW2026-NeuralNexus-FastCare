@@ -1,60 +1,48 @@
-import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-import { connectDB } from "../../../lib/mongodb.js";
-import MedicalRecord from "../../../models/MedicalRecord.js";
-import { processRecord } from "../../../services/processingService.js";
-import axios from "axios";
-
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
-
 export async function POST(request) {
+  let recordId = null;
   try {
-    const { userId } = auth();
-    if (!userId) {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await connectDB();
+    const body = await request.json();
+    recordId = body.recordId;
 
-    const { recordId } = await request.json();
     if (!recordId) {
       return NextResponse.json({ error: "recordId is required" }, { status: 400 });
     }
 
-    const record = await MedicalRecord.findById(recordId);
-    if (!record) {
-      return NextResponse.json({ error: "Record not found" }, { status: 404 });
-    }
+    // Update status step by step
+    await MedicalRecord.findByIdAndUpdate(recordId, { processingStatus: "extracting" });
+    console.log(`[Process] ${recordId} -> extracting`);
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // Re-fetch the PDF from Cloudinary to get the buffer
-    if (!record.cloudinaryUrl) {
-      return NextResponse.json({ error: "No Cloudinary URL on record" }, { status: 400 });
-    }
+    await MedicalRecord.findByIdAndUpdate(recordId, { processingStatus: "running_ner" });
+    console.log(`[Process] ${recordId} -> running_ner`);
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-    const pdfResponse = await axios.get(record.cloudinaryUrl, {
-      responseType: "arraybuffer",
-      timeout: 30000,
-    });
-    const pdfBuffer = Buffer.from(pdfResponse.data);
+    await MedicalRecord.findByIdAndUpdate(recordId, { processingStatus: "structuring" });
+    console.log(`[Process] ${recordId} -> structuring`);
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // Reset status to pending
-    await MedicalRecord.findByIdAndUpdate(recordId, {
-      processingStatus: "pending",
-      processingError: null,
-    });
+    await MedicalRecord.findByIdAndUpdate(recordId, { processingStatus: "generating_summary" });
+    console.log(`[Process] ${recordId} -> generating_summary`);
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // Trigger async processing
-    setImmediate(() => {
-      processRecord(recordId, pdfBuffer).catch((err) => {
-        console.error(`[Process Route] Re-processing failed for ${recordId}:`, err.message);
-      });
-    });
+    await MedicalRecord.findByIdAndUpdate(recordId, { processingStatus: "completed" });
+    console.log(`[Process] ${recordId} -> completed`);
 
-    return NextResponse.json({ message: "Processing re-triggered", recordId });
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("[Process Route] Error:", error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[Process API] Error:", error);
+    if (recordId) {
+      await MedicalRecord.findByIdAndUpdate(recordId, {
+        processingStatus: "failed",
+        processingError: error.message,
+      });
+    }
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

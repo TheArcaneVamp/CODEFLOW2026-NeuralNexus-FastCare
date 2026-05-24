@@ -3,8 +3,7 @@ import "./globals.css";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import Header from "@/components/header";
-import { ClerkProvider } from "@clerk/nextjs";
-import {dark} from "@clerk/themes";
+import AuthProvider from "@/components/AuthProvider";
 import Footer from "@/components/Footer";
 
 const inter = Inter({subsets:["latin"]});
@@ -16,7 +15,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <ClerkProvider appearance={{baseTheme:dark}}>
+    <AuthProvider>
       <html lang="en" suppressHydrationWarning>
         <body className={`${inter.className}`}>
           <ThemeProvider
@@ -33,6 +32,6 @@ export default function RootLayout({ children }) {
           </ThemeProvider>
         </body>
       </html>
-      </ClerkProvider>
+    </AuthProvider>
   );
 }

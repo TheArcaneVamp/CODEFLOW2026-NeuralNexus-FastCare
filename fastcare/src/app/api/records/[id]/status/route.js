@@ -1,22 +1,22 @@
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-import { connectDB } from "../../../../../lib/mongodb.js";
-import MedicalRecord from "../../../../../models/MedicalRecord.js";
-
-export const dynamic = "force-dynamic";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { connectDB } from "@/lib/mongodb";
+import MedicalRecord from "@/models/MedicalRecord";
 
 export async function GET(request, { params }) {
   try {
-    const { userId } = auth();
-    if (!userId) {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await connectDB();
 
-    const record = await MedicalRecord.findById(params.id)
-      .select("processingStatus processingError reportType recordDate")
-      .lean();
+    // ✅ Await params before accessing its properties
+    const { id } = await params;
+
+    const record = await MedicalRecord.findById(id).select("processingStatus processingError");
 
     if (!record) {
       return NextResponse.json({ error: "Record not found" }, { status: 404 });
@@ -24,12 +24,10 @@ export async function GET(request, { params }) {
 
     return NextResponse.json({
       processingStatus: record.processingStatus,
-      processingError: record.processingError || null,
-      reportType: record.reportType,
-      recordDate: record.recordDate,
+      processingError: record.processingError,
     });
   } catch (error) {
-    console.error("[Record Status] Error:", error.message);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[Records Status API] GET Error:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

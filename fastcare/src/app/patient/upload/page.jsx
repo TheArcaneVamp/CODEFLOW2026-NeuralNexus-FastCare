@@ -107,17 +107,18 @@
 
 
 "use client";
-import { useState, useEffect } from "react";
-import { useUser } from "@clerk/nextjs";
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
-import DashboardLayout from "@/components/shared/DashboardLayout";
-import UploadZone from "@/components/patient/UploadZone";
-import ProcessingStatus from "@/components/patient/ProcessingStatus";
-import LoadingSpinner from "@/components/shared/LoadingSpinner";
+import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import DashboardLayout from "../../../components/shared/DashboardLayout.jsx";
+import UploadZone from "../../../components/patient/UploadZone.jsx";
+import ProcessingStatus from "../../../components/patient/ProcessingStatus.jsx";
+import { useUpload } from "../../../hooks/useUpload.js";
+import { CheckCircle, RotateCcw } from "lucide-react";
 
 export default function UploadPage() {
-  const { user } = useUser();
+  const { data: session, status } = useSession();
+  const user = session?.user;
+  const isLoaded = status !== "loading";
   const [patientId, setPatientId] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [recordId, setRecordId] = useState(null);
@@ -134,8 +135,8 @@ export default function UploadPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            name: user.fullName || user.firstName || "Patient",
-            email: user.primaryEmailAddress?.emailAddress || "",
+            name: user?.name || "Patient",
+            email: user?.email || "",
           }),
         });
         const data = await res.json();

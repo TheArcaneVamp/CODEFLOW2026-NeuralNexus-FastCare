@@ -1,131 +1,62 @@
-// import { auth } from "@clerk/nextjs/server";
-// import connectDB from "@/lib/mongodb";
-// import Patient from "@/models/Patient";
-// import MedicalRecord from "@/models/MedicalRecord";
-// import { processWithNLP } from "@/services/processingService";
-
-// export async function POST(req) {
-//   try {
-//     const { userId } = auth();
-//     if (!userId) {
-//       return Response.json(
-//         { error: "Unauthorized" },
-//         { status: 401 }
-//       );
-//     }
-
-//     await connectDB();
-
-//     const patient = await Patient.findOne({ clerkId: userId });
-//     if (!patient) {
-//       return Response.json(
-//         { error: "Patient not found" },
-//         { status: 404 }
-//       );
-//     }
-
-//     const formData = await req.formData();
-//     const files = formData.getAll("files");
-//     const reportType = formData.get("reportType") || "other";
-
-//     if (!files || files.length === 0) {
-//       return Response.json(
-//         { error: "No files uploaded" },
-//         { status: 400 }
-//       );
-//     }
-
-//     // Create record in DB
-//     const record = await MedicalRecord.create({
-//       patientId: patient._id,
-//       publicId: `record_${Date.now()}`,
-//       reportType,
-//       processingStatus: "uploading",
-//       uploadedBy: userId,
-//       recordDate: new Date(),
-//     });
-
-//     // Fire and forget — dont await
-//     processWithNLP(record._id, patient, files).catch(
-//       err => console.error("Background processing failed:", err)
-//     );
-
-//     return Response.json({
-//       success: true,
-//       recordId: record._id,
-//     });
-
-//   } catch (err) {
-//     console.error("Upload route error:", err);
-//     return Response.json(
-//       { error: err.message },
-//       { status: 500 }
-//     );
-//   }
-// }
-
-import { auth } from "@clerk/nextjs/server";
-import connectDB from "@/lib/mongodb";
-import Patient from "@/models/Patient";
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { connectDB } from "@/lib/mongodb";
 import MedicalRecord from "@/models/MedicalRecord";
-import { processWithNLP } from "@/services/processingService";
+import Patient from "@/models/Patient";
+import { v2 as cloudinary } from "cloudinary";
 
-export async function POST(req) {
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+export async function POST(request) {
   try {
-    const { userId } = auth();
-    if (!userId) {
-      return Response.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     await connectDB();
 
-    const patient = await Patient.findOne({ clerkId: userId });
-    if (!patient) {
-      return Response.json(
-        { error: "Patient not found" },
-        { status: 404 }
-      );
+    const formData = await request.formData();
+    const file = formData.get("file");
+    const reportType = formData.get("reportType");
+    const patientId = formData.get("patientId");
+
+    if (!file || !patientId) {
+      return NextResponse.json({ error: "File and patientId are required" }, { status: 400 });
     }
 
-    const formData = await req.formData();
-    const files = formData.getAll("files");
-    const reportType = formData.get("reportType") || "other";
+    const fileBuffer = await file.arrayBuffer();
+    const mimeType = file.type;
+    const encoding = "base64";
+    const base64Data = Buffer.from(fileBuffer).toString("base64");
+    const fileUri = "data:" + mimeType + ";" + encoding + "," + base64Data;
 
-    if (!files || files.length === 0) {
-      return Response.json(
-        { error: "No files uploaded" },
-        { status: 400 }
-      );
-    }
+    const uploadResult = await cloudinary.uploader.upload(fileUri, {
+      folder: "medical-records",
+    });
 
-    // Create record in DB
-    const record = await MedicalRecord.create({
-      patientId: patient._id,
-      publicId: `record_${Date.now()}`,
+    const newRecord = await MedicalRecord.create({
+      patientId,
+      cloudinaryUrl: uploadResult.secure_url,
+      publicId: uploadResult.public_id,
       reportType,
-      processingStatus: "uploading",
-      uploadedBy: userId,
-      recordDate: new Date(),
+      uploadedBy: session.user.id,
+      processingStatus: 'uploading',
     });
 
-    // Fire and forget — dont await
-    processWithNLP(record._id, patient, files).catch(
-      err => console.error("Background processing failed:", err)
-    );
-
-    return Response.json({
-      success: true,
-      recordId: record._id,
+    await Patient.findByIdAndUpdate(patientId, {
+      $inc: { recordCount: 1 },
+      $set: { lastVisit: new Date() },
     });
 
-  } catch (err) {
-    console.error("Upload route error:", err);
-    return Response.json(
-      { error: err.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ recordId: newRecord._id });
+  } catch (error) {
+    console.error("[Upload API] POST Error:", error);
+    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

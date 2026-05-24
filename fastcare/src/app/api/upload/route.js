@@ -4,13 +4,7 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { connectDB } from "@/lib/mongodb";
 import MedicalRecord from "@/models/MedicalRecord";
 import Patient from "@/models/Patient";
-import { v2 as cloudinary } from "cloudinary";
-
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+import { uploadPDF } from "@/lib/Cloudinary";
 
 export async function POST(request) {
   try {
@@ -31,15 +25,10 @@ export async function POST(request) {
     }
 
     const fileBuffer = await file.arrayBuffer();
-    const mimeType = file.type;
-    const encoding = "base64";
-    const base64Data = Buffer.from(fileBuffer).toString("base64");
-    const fileUri = "data:" + mimeType + ";" + encoding + "," + base64Data;
-
-    const uploadResult = await cloudinary.uploader.upload(fileUri, {
-      folder: "medical-records",
-      resource_type: "auto",
-    });
+    const buffer = Buffer.from(fileBuffer);
+    
+    // Upload via stream
+    const uploadResult = await uploadPDF(buffer, file.name || "document.pdf");
 
     const newRecord = await MedicalRecord.create({
       patientId,
@@ -58,6 +47,6 @@ export async function POST(request) {
     return NextResponse.json({ recordId: newRecord._id });
   } catch (error) {
     console.error("[Upload API] POST Error:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
   }
 }
